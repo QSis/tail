@@ -100,7 +100,7 @@ var (
 // via the `Tail.Lines` channel. To handle errors during tailing,
 // invoke the `Wait` or `Err` method after finishing reading from the
 // `Lines` channel.
-func TailFile(filename string, config Config) (*Tail, error) {
+func TailFile(filename string, config Config, delim byte) (*Tail, error) {
 	if config.ReOpen && !config.Follow {
 		util.Fatal("cannot set ReOpen without Follow.")
 	}
@@ -130,7 +130,7 @@ func TailFile(filename string, config Config) (*Tail, error) {
 		}
 	}
 
-	go t.tailFileSync()
+	go t.tailFileSync(delim)
 
 	return t, nil
 }
@@ -206,6 +206,24 @@ func (tail *Tail) reopen() error {
 	}
 	return nil
 }
+func (tail *Tail) newReadLine(delim byte) (string, error) {
+	tail.lk.Lock()
+	if string(delim) == "" {
+		delim = '\n'
+	}
+	line, err := tail.reader.ReadString(delim)
+	tail.lk.Unlock()
+	if err != nil {
+		// Note ReadString "returns the data read before the error" in
+		// case of an error, including EOF, so we return it as is. The
+		// caller is expected to process it if err is EOF.
+		return line, err
+	}
+
+	line = strings.TrimRight(line, delim)
+
+	return line, err
+}
 
 func (tail *Tail) readLine() (string, error) {
 	tail.lk.Lock()
@@ -218,12 +236,12 @@ func (tail *Tail) readLine() (string, error) {
 		return line, err
 	}
 
-	line = strings.TrimRight(line, "\n")
+	line = strings.TrimRight(line, '\n')
 
 	return line, err
 }
 
-func (tail *Tail) tailFileSync() {
+func (tail *Tail) tailFileSync(delim byte) {
 	defer tail.Done()
 	defer tail.close()
 
@@ -265,7 +283,7 @@ func (tail *Tail) tailFileSync() {
 			}
 		}
 
-		line, err := tail.readLine()
+		line, err := tail.newReadLine(delim)
 
 		// Process `line` even if err is EOF.
 		if err == nil {
