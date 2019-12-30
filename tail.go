@@ -220,7 +220,7 @@ func (tail *Tail) newReadLine(delim byte) (string, error) {
 		return line, err
 	}
 
-	line = strings.TrimRight(line, string(delim))
+	// line = strings.TrimRight(line, string(delim))
 
 	return line, err
 }
